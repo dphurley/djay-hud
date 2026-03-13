@@ -60,7 +60,8 @@ struct WatchedElement {
 /// Labels we want to find and cache element refs for
 let wantedLabels: Set<String> = [
     "Title", "Artist", "Remaining time", "Key",
-    "Gain", "Line volume", "High EQ", "Mid EQ", "Low EQ", "Filter", "Tempo"
+    "Gain", "Line volume", "High EQ", "Mid EQ", "Low EQ", "Filter", "Tempo",
+    "Loop"
 ]
 
 /// Walk the tree once and collect refs to elements we care about.
@@ -131,6 +132,8 @@ struct DeckState {
     var midEQ: String = "—"
     var lowEQ: String = "—"
     var filter: String = "—"
+    var loopLength: String = "—"
+    var loopActive: Bool = false
 }
 
 /// Fast poll: just read value + description from cached refs
@@ -170,6 +173,17 @@ func pollDeckStates(_ watched: [WatchedElement]) -> (DeckState, DeckState) {
         case "Low EQ":        if deck == 1 { deck1.lowEQ = val } else { deck2.lowEQ = val }
         case "Filter":        if deck == 1 { deck1.filter = val } else { deck2.filter = val }
         case "Tempo":         if deck == 1 { deck1.tempo = val } else { deck2.tempo = val }
+        case "Loop":
+            // title has length ("4 Beats"), value has on/off state
+            let loopTitle = getTitle(elem.ref) ?? "—"
+            let isActive = val == "Active" || val == "1"
+            if deck == 1 {
+                deck1.loopLength = loopTitle
+                deck1.loopActive = isActive
+            } else {
+                deck2.loopLength = loopTitle
+                deck2.loopActive = isActive
+            }
         default: break
         }
     }
@@ -208,7 +222,7 @@ func renderDeck(_ deck: DeckState, number: Int) -> String {
     \(dim)│\(reset) \(bold)Artist:\(reset) \(pad(deck.artist, w - 9))\(dim)│\(reset)
     \(dim)├\(bar)┤\(reset)
     \(dim)│\(reset) BPM: \(yellow)\(pad(deck.bpm, 8))\(reset) Key: \(green)\(pad(deck.key, 4))\(reset) Time: \(pad(deck.timeRemaining, w - 31))\(dim)│\(reset)
-    \(dim)│\(reset) Tempo: \(pad(deck.tempo, w - 8))\(dim)│\(reset)
+    \(dim)│\(reset) Tempo: \(pad(deck.tempo, 8)) Loop: \(deck.loopActive ? "\(green)ON\(reset)" : "\(dim)off\(reset)") \(pad(deck.loopLength, w - 27))\(dim)│\(reset)
     \(dim)├\(bar)┤\(reset)
     \(dim)│\(reset) Gain: \(pad(deck.gain, 6)) Vol: \(pad(deck.volume, 6)) Filter: \(pad(deck.filter, w - 29))\(dim)│\(reset)
     \(dim)│\(reset) EQ  H: \(pad(deck.highEQ, 5)) M: \(pad(deck.midEQ, 5)) L: \(pad(deck.lowEQ, w - 24))\(dim)│\(reset)
@@ -314,7 +328,7 @@ print("Discovering djay Pro elements (pid: \(pid))...")
 var watched = dedup(discoverElements(window))
 print("Cached \(watched.count) elements. Starting live poll.\n")
 
-let pollInterval: useconds_t = 100_000 // 0.1s
+let pollInterval: useconds_t = 33_333 // ~30fps
 
 func renderState() {
     let (deck1, deck2) = pollDeckStates(watched)
